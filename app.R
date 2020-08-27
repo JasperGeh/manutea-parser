@@ -10,21 +10,29 @@ library(stringr) # for string replacement
 # UI ####
 ui <- fluidPage(
   h1(style="text-align: center;", "Manutea's GO Parser"),
-  p(style="text-align: center;", "Hey Manutea! Load the CSV, hit 'Analyse', and switch to the 'Analysis'-tab to select a gene and see the sorted ontologies.
-    Let me know if you need more or something doesn't work. —Jasper"),
+  p(style="text-align: center;", "Hey Manutea! Load the CSV and switch to the 'Gene Dictionary'-tab to select a gene and see the sorted ontologies. The 'Compiled Table'-tab contains the top-3 ontologies for each term. Let me know if you need more or something doesn't work. —Jasper, 2020-08-27"),
   fluidRow(
     column(10, 
            align='center', 
            offset = 1, 
            fileInput('datafile', 'Choose CSV file',
-              accept=c('text/csv', 'text/comma-separated-values,text/plain')),
-           actionButton("go", "Analyse"))),
+              accept=c('text/csv', 'text/comma-separated-values,text/plain')))),
   tabsetPanel(
     tabPanel("Input Table",
+             br(),
              dataTableOutput(outputId = 'inTab')),
-    tabPanel("Analysis",
+    tabPanel("Gene Dictionary",
              br(),
              wellPanel(uiOutput("gene")),
+             dataTableOutput(outputId = 'dictTab')),
+    tabPanel("Compiled Table",
+             br(),
+             fluidRow(
+               column(
+                 10, 
+                 align='center', 
+                 offset=1, 
+                 downloadButton("dlComp", "Download Compiled Table"))),
              dataTableOutput(outputId = 'resTab'))
     )
 )
@@ -45,7 +53,7 @@ server <- function(input, output) {
       mutate(genes = strsplit(genes, ", ")) # create new column Genelist which splits Gene-column at commas
     df
   })
-  res <- eventReactive(input$go, {
+  dictio <- reactive({
     df <- filedata()
     genedict <- dict() # Create empty dict from container library
     
@@ -74,9 +82,23 @@ server <- function(input, output) {
     results
   })
   
-  #The following set of functions populate the column selectors
+  res <- reactive({
+    results <- dictio()
+    compTab <- setNames(data.frame(matrix(ncol = 10, nrow = 0)), c("Gene", "GO1", "Term1", "FDR1", "GO2", "Term2", "FDR2", "GO3", "Term3", "FDR3"))
+    for (e in 1:length(results)) {
+      sub <- results[[e]][1:3,]
+      compTab[e,] <- c(names(results[e]), sub[1,1], sub[1,2], sub[1,3], sub[2,1], sub[2,2], sub[2,3], sub[3,1], sub[3,2], sub[3,3])
+    }
+    compTab
+  })
+  
+  
+  
+  
+  
+  #The following function output content
   output$gene <- renderUI({
-    df <-res()
+    df <- dictio()
     if (is.null(df)) return(NULL)
     
     items=sort(names(df))
@@ -88,9 +110,20 @@ server <- function(input, output) {
     filedata()
   })
   
-  output$resTab <- renderDataTable({
-    res()[[input$gene]]
+  output$dictTab <- renderDataTable({
+    dictio()[[input$gene]]
   })
+  
+  output$resTab <- renderDataTable({
+    res()
+  })
+  
+  output$dlComp <- downloadHandler(
+    filename = "CompiledTable.csv",
+    content = function(file) {
+      write.csv(res(), file, row.names = FALSE)
+    }
+  )
 }
 
 
